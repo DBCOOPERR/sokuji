@@ -89,25 +89,48 @@ jobs:
           VITE_ENABLE_ANALYTICS: false
 
       - name: Package Windows application
-        run: npx electron-forge make --arch=x64
+        id: package
+        shell: pwsh
         env:
           CI: false
           CSC_IDENTITY_AUTO_DISCOVERY: false
           VITE_ENVIRONMENT: production
           VITE_ENABLE_ANALYTICS: false
+        run: |
+          npx electron-forge make --arch=x64 *>&1 | Tee-Object -FilePath windows-package.log
+          "exit_code=$LASTEXITCODE" >> $env:GITHUB_OUTPUT
+          exit 0
+
+      - name: Upload Windows package diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-package-diagnostics-sdk2
+          path: windows-package.log
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Upload portable application
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Sokuji-Gemini-Live-Translate-CN-portable-sdk2
           path: out/Sokuji-win32-x64/**
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Upload Windows installer
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Sokuji-Gemini-Live-Translate-CN-installer-sdk2
           path: out/make/squirrel.windows/x64/*Setup*.exe
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
+
+      - name: Stop if Windows packaging failed
+        if: steps.package.outputs.exit_code != '0'
+        shell: pwsh
+        run: |
+          Get-Content windows-package.log
+          exit 1
