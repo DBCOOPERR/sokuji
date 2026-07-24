@@ -1,0 +1,70 @@
+name: Build Gemini Live Translate CN fix
+
+on:
+  push:
+    branches:
+      - fix/gemini-3.5-live-translate-language
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Apply Gemini Live Translate patch
+        shell: bash
+        run: |
+          git apply --check patches/gemini-3.5-live-translate-language.patch
+          git apply patches/gemini-3.5-live-translate-language.patch
+          git diff --check
+          git diff --stat
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Gemini client tests
+        run: npm test -- --run src/services/clients/GeminiClient.test.ts
+
+      - name: Build renderer
+        run: npm run build
+        env:
+          CI: false
+          VITE_ENVIRONMENT: production
+          VITE_ENABLE_ANALYTICS: false
+
+      - name: Package Windows application
+        run: npx electron-forge make --arch=x64
+        env:
+          CI: false
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          VITE_ENVIRONMENT: production
+          VITE_ENABLE_ANALYTICS: false
+
+      - name: Upload portable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sokuji-Gemini-Live-Translate-CN-portable
+          path: out/Sokuji-win32-x64/**
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sokuji-Gemini-Live-Translate-CN-installer
+          path: out/make/squirrel.windows/x64/*Setup*.exe
+          if-no-files-found: error
+          retention-days: 14
