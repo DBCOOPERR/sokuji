@@ -35,6 +35,9 @@ jobs:
         shell: pwsh
         run: |
           node scripts/apply-gemini-live-translate-fix.mjs *>&1 | Tee-Object -FilePath patch-diagnostics.log
+          if ($LASTEXITCODE -eq 0) {
+            node scripts/apply-gemini-live-translate-sdk2-fix.mjs *>&1 | Tee-Object -FilePath patch-sdk2-diagnostics.log
+          }
           "exit_code=$LASTEXITCODE" >> $env:GITHUB_OUTPUT
 
       - name: Upload patch diagnostics
@@ -42,15 +45,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gemini-fix-patch-diagnostics
-          path: patch-diagnostics.log
-          if-no-files-found: error
+          path: |
+            patch-diagnostics.log
+            patch-sdk2-diagnostics.log
+          if-no-files-found: warn
           retention-days: 3
 
       - name: Stop if patching failed
         if: steps.patch.outputs.exit_code != '0'
         shell: pwsh
         run: |
-          Get-Content patch-diagnostics.log
+          if (Test-Path patch-diagnostics.log) { Get-Content patch-diagnostics.log }
+          if (Test-Path patch-sdk2-diagnostics.log) { Get-Content patch-sdk2-diagnostics.log }
           exit 1
 
       - name: Verify patched source
@@ -62,6 +68,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Upgrade Google Gen AI SDK for Live Translate
+        shell: pwsh
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts @google/genai@2.13.0
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('node_modules/@google/genai/package.json','utf8')); console.log('Installed @google/genai', p.version); if (p.version !== '2.13.0') process.exit(1);"
+          $matches = Get-ChildItem node_modules/@google/genai -Recurse -File -Include *.js,*.d.ts | Select-String -Pattern 'translationConfig' | Select-Object -First 5
+          if (-not $matches) { throw '@google/genai does not contain translationConfig support' }
+          $matches | ForEach-Object { Write-Host $_.Path ':' $_.LineNumber ':' $_.Line.Trim() }
 
       - name: Run Gemini client tests
         run: npm test -- --run src/services/clients/GeminiClient.test.ts
@@ -84,7 +99,7 @@ jobs:
       - name: Upload portable application
         uses: actions/upload-artifact@v4
         with:
-          name: Sokuji-Gemini-Live-Translate-CN-portable
+          name: Sokuji-Gemini-Live-Translate-CN-portable-sdk2
           path: out/Sokuji-win32-x64/**
           if-no-files-found: error
           retention-days: 14
@@ -92,7 +107,7 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Sokuji-Gemini-Live-Translate-CN-installer
+          name: Sokuji-Gemini-Live-Translate-CN-installer-sdk2
           path: out/make/squirrel.windows/x64/*Setup*.exe
           if-no-files-found: error
           retention-days: 14
