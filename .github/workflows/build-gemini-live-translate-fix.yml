@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/gemini-3.5-live-translate-language
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
